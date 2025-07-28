@@ -13,6 +13,11 @@
 
 uint8_t sample_num = 0;
 
+enum {
+    POLL_MOUSE,
+    POLL_GAMEPAD
+};
+
 
 #define SPRITE_MOUSE_CURSOR 0u
 
@@ -41,28 +46,25 @@ static void main_init(void) {
     set_sprite_tile(SPRITE_MOUSE_CURSOR, 1u);
     move_sprite(0, 160u / 2, 144u / 2);
 
-
     DISPLAY_ON;    
     SPRITES_8x8;
 
     SHOW_BKG;
     SHOW_SPRITES;
 
-
 	UPDATE_KEYS();
 }
 
 
-
 void use_mouse_data(void) {    
 
-    uint8_t mouse_buttons = (snes_mouse.buttons & SNES_MOUSE_BUTTON_MASK) ^ SNES_MOUSE_BUTTON_MASK;
+    uint8_t mouse_buttons = (snes_mouse.buttons & SNES_MOUSE_BUTTON_MASK);
 
-    int8_t mouse_y_move = (snes_mouse.move_y & SNES_MOUSE_Y_MASK) ^ SNES_MOUSE_Y_MASK;
-    if ((snes_mouse.move_y & SNES_MOUSE_Y_DIR) == 0) mouse_y_move *= -1;
+    int8_t mouse_y_move = (snes_mouse.move_y & SNES_MOUSE_Y_MASK);
+    if (snes_mouse.move_y & SNES_MOUSE_Y_DIR) mouse_y_move *= -1;
 
-    int8_t mouse_x_move = (snes_mouse.move_x & SNES_MOUSE_X_MASK) ^ SNES_MOUSE_X_MASK;
-    if ((snes_mouse.move_x & SNES_MOUSE_X_DIR) == 0) mouse_x_move *= -1;
+    int8_t mouse_x_move = (snes_mouse.move_x & SNES_MOUSE_X_MASK);
+    if (snes_mouse.move_x & SNES_MOUSE_X_DIR) mouse_x_move *= -1;
 
     scroll_sprite(SPRITE_MOUSE_CURSOR, mouse_x_move, mouse_y_move);
 
@@ -78,7 +80,36 @@ void use_mouse_data(void) {
 }
 
 
-void poll_mouse_loop(void) {
+void use_gamepad_data(void) {    
+
+    int8_t gamepad_y_move = 0;
+    int8_t gamepad_x_move = 0;
+
+    if      (snes_gamepad.first_byte & SNES_PAD_UP)   gamepad_y_move = -1;
+    else if (snes_gamepad.first_byte & SNES_PAD_DOWN) gamepad_y_move =  1;
+
+    if      (snes_gamepad.first_byte & SNES_PAD_LEFT)  gamepad_x_move = -1;
+    else if (snes_gamepad.first_byte & SNES_PAD_RIGHT) gamepad_x_move =  1;
+
+    scroll_sprite(SPRITE_MOUSE_CURSOR, gamepad_x_move, gamepad_y_move);
+
+    if (snes_gamepad.second_byte & SNES_PAD_A) {
+        OAM_item_t * itm = &shadow_OAM[SPRITE_MOUSE_CURSOR];
+        plot_point(itm->x - DEVICE_SPRITE_PX_OFFSET_X + SCX_REG,
+                   itm->y - DEVICE_SPRITE_PX_OFFSET_Y + SCY_REG);
+    }
+
+    if (snes_gamepad.first_byte & SNES_PAD_B) scroll_bkg(-gamepad_x_move, -gamepad_y_move);
+
+    if      (snes_gamepad.second_byte & SNES_PAD_L) scroll_bkg(-1,0);
+    else if (snes_gamepad.second_byte & SNES_PAD_R) scroll_bkg(1,0);
+
+    if      (snes_gamepad.second_byte & SNES_PAD_X) scroll_bkg(0,-1);
+    else if (snes_gamepad.first_byte & SNES_PAD_Y)  scroll_bkg(0,1);
+}
+
+
+void poll_loop(uint8_t poll_type) {
 
     UPDATE_KEYS();
     while (1) {
@@ -86,9 +117,16 @@ void poll_mouse_loop(void) {
         UPDATE_KEYS();
         if (KEY_TICKED(J_ANY)) break;
 
-        // Read and use mouse
-        snes_mouse_poll();
-        use_mouse_data();
+        if (poll_type == POLL_MOUSE) {
+            // Read and use mouse
+            snes_mouse_poll();
+            use_mouse_data();
+        }
+        else if (poll_type == POLL_GAMEPAD) {
+            // Read and use mouse
+            snes_gamepad_poll();
+            use_gamepad_data();
+        }
 
         vsync();
     }
@@ -117,22 +155,44 @@ void poll_mouse_once_log(void) {
 }
 
 
+void poll_gamepad_once_log(void) {
+
+    sample_num++;
+    snes_gamepad_poll();
+
+    // cast to uint8_t / unsigned char has the bug
+    printf("%hu:%hx %hx", 
+        (char)sample_num,
+        (char)snes_gamepad.first_byte,
+        (char)snes_gamepad.second_byte);
+
+    printf("\n");
+}
+
+
 void main(void){
 
     UPDATE_KEYS();
 
-    printf("ST: Draw Mode \n");
-    printf("A:  Poll + Log\n");
-    main_init();
 
-    snes_mouse_init();
-    snes_mouse_start();
+    printf(
+      "Mouse \n"
+      " ST: Draw Mode \n"
+      " A:  Poll + Log\n"
+      "\n"
+      "GamePad \n"
+      " SEL: Draw Mode \n"
+      " B:  Poll + Log\n");
+    main_init();
 
     while (1) {
 
         UPDATE_KEYS();
-        if (KEY_TICKED(J_START)) poll_mouse_loop();
+        if (KEY_TICKED(J_START)) poll_loop(POLL_MOUSE);
         if (KEY_TICKED(J_A)) poll_mouse_once_log();
+
+        if (KEY_TICKED(J_SELECT)) poll_loop(POLL_GAMEPAD);
+        if (KEY_TICKED(J_B)) poll_gamepad_once_log();
 
         vsync();
     }

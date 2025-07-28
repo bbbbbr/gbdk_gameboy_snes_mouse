@@ -9,30 +9,31 @@
 
 #include "snes_mouse.h"
 
-// From:
-// https://www.repairfaq.org/REPAIR/F_SNES.html
-//
-//
-// I could not find a Nintendo numbering scheme, so I made one up.
-// The view is looking back "into" the connector on the CABLE.
-//
-//  ----------------------------- ---------------------
-// |                             |                      \
-// | (1)     (2)     (3)     (4) |   (5)     (6)     (7) |
-// |                             |                      /
-//  ----------------------------- ---------------------
-//
-//
-//   Pin     Description             Color of wire in cable    Game Boy Link Port
-//   ===     ===========             ======================    =================
-//   1       +5v                     White                     +5V
-//   2       Data clock              Yellow                    SCLK
-//   3       Data latch              Orange                    SOUT
-//   4       Serial data             Red                       SIN
-//   5       ?                       no wire
-//   6       ?                       no wire
-//   7       Ground                  Brown                     GND
-//
+
+/*
+  SNES CONTROLLER                             GAME BOY
+  *PORT*                                     LINK *PORT*
+   _
+  / \
+ | 7 | GND         -   GB_Link.GND   [6]
+ | 6 |
+ | 5 |
+ |---|                                           _______
+ | 4 | Data  (out)  -> GB_Link.S-IN      [3]    /       \
+ | 3 | Latch (in)  <-  GB_Link.S-OUT(*2) [2]   | 5  3  1 |
+ | 2 | Clock (in)  <-  GB_Link.S-CLK(*1) [5]   | 6  4  2 |
+ | 1 | 5v    (in)  <-  GB_Link.5v        [1]   |_________|
+ |___|
+
+*1: GB_Link.S-CLK should probably have an inverter on it,
+    works on DMG (only) without one despite that.
+
+*2: The problem with using GB_Link.S-OUT to trigger the controller
+    protocol latch is that the clock runs during that triggering
+    the sensitivity adjustment each time the mouse is polled.
+    GB_Link.4(S-Data) might work as an alternative, controlled
+    via bit 4 (d-pad select) of the joypad register.
+*/
 
 
 
@@ -69,10 +70,6 @@
 //  And the CPU samples the data on every falling edge.
 
 
-// GB 4194304 / 4 = 1,048,576 cycles per sec ... 1 cycle = 0.954us
-// 1 second = 1,000,000us
-
-
 // == Link port ==
 //
 // SCLK
@@ -83,131 +80,79 @@
 
 // Issues: need to invert clock
 // - Could get signal inverter
-//   - https://www.adafruit.com/product/3877
 //
 // - Could try using SD/P14 as clock and SCLK as latch strobe?
+//
+// - Could do detection of Mouse vs not mouse based on the last
+//   bit clocked of the second byte read being low (i.e. bit 16 == 0)
+
+
+// On the DMG each subsequent poll of the mouse triggers a change in
+// the sensitivity setting, likely due to the clock (S-CLK) continuing
+// to run during the simulated latch behavior on S-OUT. Ref:
+//
+// Switching sensitivity mode: First, a normal 12us latch pulse, 
+// next the first 16 bits are read using normal button timings.
+// Shortly after (about 1ms), 31 short latch pulses (3.4uS) are sent, with the
+// clock going low for 700ns during each latch pulse.
+// For selecting a specific sensitivity, simply execute the 
+// special sequence until bits 11 and 12 are as desired.
 
 
 
-
-// Data is active low, so invert bits after reading controller data
-
-void snes_mouse_init(void) {
-
-}
-
-
-void snes_mouse_start(void) {
-
-}
-
-
-bool snes_mouse_new_data(void) {
-
-    return true;
-}
-
-
-// bool    sio_rx_ready = false;
-// uint8_t sio_rx_buf[SNES_MOUSE_REPORT_LEN];
+// Poll the SNES mouse with 1 byte worth of latch and 4 bytes of data
+//
+// This is a simplistic implementation with blocking waits for serial transfers
+// to finish. In actual use it would be better to make it interrupt driven upon
+// completion of each serial transfer.
+//
 snes_mouse_t snes_mouse;
 
 void snes_mouse_poll(void) {
 
     // Fake a overly long LATCH signal on S-OUT with a transfer of all bits = 1
-    SB_REG = SNES_MOUSE_TX_LATCH;
+    SB_REG = SNES_CONTROLLER_TX_LATCH;
     SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
     while (SC_REG & SIOF_XFER_START);
 
     uint8_t * p_snes_mouse = (uint8_t *) &snes_mouse;
     for (uint8_t c = 0u; c < SNES_MOUSE_REPORT_LEN; c++) {
-        // Start a new transfer
+        // Start another transfer
         // No bits set in Serial Out byte to avoid disturbing the LATCH line
         SB_REG = 0u;
         SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
 
         // Wait for transfer to complete
         while (SC_REG & SIOF_XFER_START);
-        *p_snes_mouse++ = SB_REG;
+        // Save incoming data (which is active low so invert bits)
+        *p_snes_mouse++ = ~SB_REG;
     }
 }
 
 
-// Alternate approach, hook up normally unused SD pin
-// (connected to P14)
-// set or clear 4 bit on FF00 (d-pad matrix)
+// Poll the SNES gamepad with 1 byte worth of latch and 2 bytes of data
 //
-// P1_REG = 0x10u// Select d-pad
+snes_gamepad_t snes_gamepad;
 
+void snes_gamepad_poll(void) {
 
-/*
-void snes_mouse_poll(void) __naked {
-    __asm \
-        push AF
-        push BC
-        push HL
+    // Fake a overly long LATCH signal on S-OUT with a transfer of all bits = 1
+    SB_REG = SNES_CONTROLLER_TX_LATCH;
+    SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
+    while (SC_REG & SIOF_XFER_START);
 
-        // Here we're going to hope that SNES Controller DATA CLOCK
-        ld   a, #SNES_MOUSE_TX_LATCH
-        ldh  (_SB_REG), a
+    uint8_t * p_snes_gamepad = (uint8_t *) &snes_gamepad;
+    for (uint8_t c = 0u; c < SNES_GAMEPAD_REPORT_LEN; c++) {
+        // Start another transfer
+        // No bits set in Serial Out byte to avoid disturbing the LATCH line
+        SB_REG = 0u;
+        SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
 
-        ld   a, #(SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT)
-        ldh  (_SC_REG), a
-
-        // Wait at least 12 microseconds, meaning about ~ 13 M-Cycles
-        // and then abort the transfer
-
-        // This is too short and seems to result in unreliable Latch strobes
-        // .rept (13 - 2 - 2)  // - 4 for the 4 M-Cycles below to stop SIO
-        // .rept (128)  // 183 usec
-        .rept (60)  // 183 usec
-            nop
-        .endm
-        // Early abort the transfer
-        //
-        // However: The HI state on S-OUT doesn't go low until the next transfer
-        //          below starts
-        ld   a, #SIOF_CLOCK_INT
-        ldh  (_SC_REG), a
-
-        .rept (100)
-            nop
-        .endm
-
-        // Read 4 bytes from serial
-        ld  c,  #SNES_MOUSE_REPORT_LEN
-        ld  hl, #_sio_rx_buf
-        .readloop:
-            // Make sure SB_REG is all zeros since it's wired up to the SNES pad latch line
-            xor  a
-            ldh  (_SB_REG), a
-
-            ld   a, #(SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT)
-            ldh  (_SC_REG), a
-
-            // Wait for serial transfer to complete
-            .tx_loop:
-                ldh  a, (_SC_REG)
-                bit  #SIOF_B_XFER_START, a
-                jr   nz, .tx_loop
-
-            // Save received serial byte
-            ldh  a, (_SB_REG)
-            ld  (hl+), a
-
-            .rept (100)
-                nop
-            .endm
-
-
-            dec c
-            jr  nz, .readloop
-
-        pop HL
-        pop BC
-        pop AF
-
-        ret
-    __endasm;
+        // Wait for transfer to complete
+        while (SC_REG & SIOF_XFER_START);
+        // Save incoming data (which is active low so invert bits)
+        *p_snes_gamepad++ = ~SB_REG;
+    }
 }
-*/
+
+

@@ -1,4 +1,15 @@
-# Example for using the SNES/Super Nintendo Mouse on the Game Boy (in C/GBDK) attached directly to the link port
+# GBDK/C Example for SNES Mouse on the Game Boy Link Port
+
+Example for using the SNES/Super Nintendo Mouse (or Gamepad/Controller) on 
+the Game Boy (in C/GBDK) attached directly to the link port.
+
+<video width="640" height="360" controls>
+  <source src="info/gameboy_snes_mouse.mp4" type="video/mp4">
+</video>
+
+This is a simplistic implementation with blocking waits for serial transfers
+to finish. In actual use it would be better to use an interrupt to handle
+completion of each serial transfer.
 
 
 SNES Controller Port
