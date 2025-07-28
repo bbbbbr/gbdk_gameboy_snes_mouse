@@ -11,8 +11,9 @@
 
 
 /*
-  SNES CONTROLLER                             GAME BOY
-  *PORT*                                     LINK *PORT*
+```
+  SNES CONTROLLER                                GAME BOY
+  *PORT*                                        LINK *PORT*
    _
   / \
  | 7 | GND         -   GB_Link.GND   [6]
@@ -30,9 +31,10 @@
 
 *2: The problem with using GB_Link.S-OUT to trigger the controller
     protocol latch is that the clock runs during that triggering
-    the sensitivity adjustment each time the mouse is polled.
+    the sensitivity adjustment each time the mouse is polled. In 
+    practice this doesn't seem to make a big difference.
     GB_Link.4(S-Data) might work as an alternative, controlled
-    via bit 4 (d-pad select) of the joypad register.
+    via bit 4 (d-pad select) of the joypad register. 
 */
 
 
@@ -91,11 +93,11 @@
 // the sensitivity setting, likely due to the clock (S-CLK) continuing
 // to run during the simulated latch behavior on S-OUT. Ref:
 //
-// Switching sensitivity mode: First, a normal 12us latch pulse, 
+// Switching sensitivity mode: First, a normal 12us latch pulse,
 // next the first 16 bits are read using normal button timings.
 // Shortly after (about 1ms), 31 short latch pulses (3.4uS) are sent, with the
 // clock going low for 700ns during each latch pulse.
-// For selecting a specific sensitivity, simply execute the 
+// For selecting a specific sensitivity, simply execute the
 // special sequence until bits 11 and 12 are as desired.
 
 
