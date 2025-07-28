@@ -16,7 +16,7 @@
   *PORT*                                        LINK *PORT*
    _
   / \
- | 7 | GND         -   GB_Link.GND   [6]
+ | 7 | GND         -   GB_Link.GND       [6]
  | 6 |
  | 5 |
  |---|                                           _______
