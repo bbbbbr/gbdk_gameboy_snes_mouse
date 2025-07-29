@@ -9,6 +9,7 @@
 #include "util.h"
 
 #include "snes_mouse.h"
+#include "snes_gamepad.h"
 
 
 uint8_t sample_num = 0;
@@ -23,16 +24,16 @@ enum {
 
 const unsigned char mouse_cursors[] = {
   // Arrow 1
-  0xFE, 0xFE, 0xFC, 0x84, 0xF8, 0x98, 0xF8, 0xA8, 
-  0xFC, 0xB4, 0xCE, 0xCA, 0x87, 0x85, 0x03, 0x03, 
+  0xFE, 0xFE, 0xFC, 0x84, 0xF8, 0x98, 0xF8, 0xA8,
+  0xFC, 0xB4, 0xCE, 0xCA, 0x87, 0x85, 0x03, 0x03,
   // Arrow 2
-  0x80, 0x80, 0xC0, 0xC0, 0xE0, 0xA0, 0xF0, 0x90, 
-  0xF8, 0x88, 0xF0, 0xB0, 0xD8, 0xD8, 0x08, 0x08, 
+  0x80, 0x80, 0xC0, 0xC0, 0xE0, 0xA0, 0xF0, 0x90,
+  0xF8, 0x88, 0xF0, 0xB0, 0xD8, 0xD8, 0x08, 0x08,
   // Arrow 3
-  0x80, 0x80, 0xC0, 0xC0, 0xE0, 0xA0, 0xF0, 0x90, 
-  0xF8, 0x88, 0xFC, 0x84, 0xF8, 0x98, 0xE0, 0xE0, 
+  0x80, 0x80, 0xC0, 0xC0, 0xE0, 0xA0, 0xF0, 0x90,
+  0xF8, 0x88, 0xFC, 0x84, 0xF8, 0x98, 0xE0, 0xE0,
   // Hand
-  0x10, 0x10, 0x38, 0x28, 0x38, 0x28, 0x7E, 0x6E, 
+  0x10, 0x10, 0x38, 0x28, 0x38, 0x28, 0x7E, 0x6E,
   0xFE, 0xA2, 0xFE, 0x82, 0x7E, 0x42, 0x3E, 0x3E
 };
 
@@ -46,7 +47,7 @@ static void main_init(void) {
     set_sprite_tile(SPRITE_MOUSE_CURSOR, 1u);
     move_sprite(0, 160u / 2, 144u / 2);
 
-    DISPLAY_ON;    
+    DISPLAY_ON;
     SPRITES_8x8;
 
     SHOW_BKG;
@@ -56,7 +57,7 @@ static void main_init(void) {
 }
 
 
-void use_mouse_data(void) {    
+void use_mouse_data(void) {
 
     uint8_t mouse_buttons = (snes_mouse.buttons & SNES_MOUSE_BUTTON_MASK);
 
@@ -80,7 +81,7 @@ void use_mouse_data(void) {
 }
 
 
-void use_gamepad_data(void) {    
+void use_gamepad_data(void) {
 
     int8_t gamepad_y_move = 0;
     int8_t gamepad_x_move = 0;
@@ -111,6 +112,17 @@ void use_gamepad_data(void) {
 
 void poll_loop(uint8_t poll_type) {
 
+    if (poll_type == POLL_MOUSE) {
+        // Init and do an first read to get the interrupt cycle running
+        snes_mouse_interrupt_init();
+        snes_mouse_interrupt_read_start();
+    }
+    else if (poll_type == POLL_GAMEPAD) {
+        // Init and do an first read to get the interrupt cycle running
+        snes_gamepad_interrupt_init();
+        snes_gamepad_interrupt_read_start();
+    }
+
     UPDATE_KEYS();
     while (1) {
         // Check for exit
@@ -118,18 +130,29 @@ void poll_loop(uint8_t poll_type) {
         if (KEY_TICKED(J_ANY)) break;
 
         if (poll_type == POLL_MOUSE) {
-            // Read and use mouse
-            snes_mouse_poll();
-            use_mouse_data();
+            // Check if data ready for use
+            if (snes_mouse_interrupt_data_ready()) {
+                use_mouse_data();
+                // Queue next read
+                snes_mouse_interrupt_read_start();
+            }
         }
         else if (poll_type == POLL_GAMEPAD) {
-            // Read and use mouse
-            snes_gamepad_poll();
-            use_gamepad_data();
+            // Check if data ready for use
+            if (snes_gamepad_interrupt_data_ready()) {
+                use_gamepad_data();
+                // Queue next read
+                snes_gamepad_interrupt_read_start();
+            }
         }
 
         vsync();
     }
+
+    if (poll_type == POLL_MOUSE)
+        snes_mouse_interrupt_deinstall();
+    else if (poll_type == POLL_MOUSE)
+        snes_gamepad_interrupt_deinstall();
 
     apa_exit();
     mode(M_TEXT_OUT);
@@ -141,10 +164,10 @@ void poll_loop(uint8_t poll_type) {
 void poll_mouse_once_log(void) {
 
     sample_num++;
-    snes_mouse_poll();
+    snes_mouse_blocking_wait_poll();
 
     // cast to uint8_t / unsigned char has the bug
-    printf("%hu:%hx %hx %hx %hx", 
+    printf("%hu:%hx %hx %hx %hx",
         (char)sample_num,
         (char)snes_mouse.first_byte,
         (char)snes_mouse.buttons,
@@ -158,10 +181,10 @@ void poll_mouse_once_log(void) {
 void poll_gamepad_once_log(void) {
 
     sample_num++;
-    snes_gamepad_poll();
+    snes_gamepad_blocking_wait_poll();
 
     // cast to uint8_t / unsigned char has the bug
-    printf("%hu:%hx %hx", 
+    printf("%hu:%hx %hx",
         (char)sample_num,
         (char)snes_gamepad.first_byte,
         (char)snes_gamepad.second_byte);
@@ -177,11 +200,11 @@ void main(void){
 
     printf(
       "Mouse \n"
-      " ST: Draw Mode \n"
+      " ST: Live Draw\n"
       " A:  Poll + Log\n"
       "\n"
       "GamePad \n"
-      " SEL: Draw Mode \n"
+      " SEL: Live Draw\n"
       " B:  Poll + Log\n");
     main_init();
 

@@ -102,19 +102,26 @@
 
 
 
+snes_mouse_t snes_mouse;
+
+uint8_t snes_mouse_state;
+bool    snes_mouse_data_ready;
+uint8_t *p_snes_mouse_data;
+
+
+// ========== Mouse Read Blocking Wait Poll Version ==========
+
 // Poll the SNES mouse with 1 byte worth of latch and 4 bytes of data
 //
 // This is a simplistic implementation with blocking waits for serial transfers
-// to finish. In actual use it would be better to make it interrupt driven upon
-// completion of each serial transfer.
+// to finish. In actual use it's almost always better to use the interrupt version
+// which has much lower cpu use.
 //
-snes_mouse_t snes_mouse;
-
-void snes_mouse_poll(void) {
+void snes_mouse_blocking_wait_poll(void) {
 
     // Fake a overly long LATCH signal on S-OUT with a transfer of all bits = 1
-    SB_REG = SNES_CONTROLLER_TX_LATCH;
-    SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
+    SB_REG = SNES_MOUSE_TX_LATCH;
+    SC_REG = SIOF_XFER_START | SIOF_CLOCK_INT;
     while (SC_REG & SIOF_XFER_START);
 
     uint8_t * p_snes_mouse = (uint8_t *) &snes_mouse;
@@ -122,7 +129,7 @@ void snes_mouse_poll(void) {
         // Start another transfer
         // No bits set in Serial Out byte to avoid disturbing the LATCH line
         SB_REG = 0u;
-        SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
+        SC_REG = SIOF_XFER_START | SIOF_CLOCK_INT;
 
         // Wait for transfer to complete
         while (SC_REG & SIOF_XFER_START);
@@ -132,29 +139,75 @@ void snes_mouse_poll(void) {
 }
 
 
-// Poll the SNES gamepad with 1 byte worth of latch and 2 bytes of data
-//
-snes_gamepad_t snes_gamepad;
+// ========== Mouse Read Interrupt Version ==========
 
-void snes_gamepad_poll(void) {
+
+// Returns whether polling the mouse via serial interrupts is
+// complete and data is ready for use in the "snes_mouse" var
+bool snes_mouse_interrupt_data_ready(void) {
+    return snes_mouse_data_ready;
+}
+
+
+// Call this to start the process of reading the mouse via serial
+// interrupt transfers
+void snes_mouse_interrupt_read_start(void) {
+    CRITICAL {
+        p_snes_mouse_data = (uint8_t *) &snes_mouse;
+        snes_mouse_state = SNES_MOUSE_STATE_LATCH;
+        snes_mouse_data_ready = false;
+    }
 
     // Fake a overly long LATCH signal on S-OUT with a transfer of all bits = 1
-    SB_REG = SNES_CONTROLLER_TX_LATCH;
-    SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
-    while (SC_REG & SIOF_XFER_START);
+    SB_REG = SNES_MOUSE_TX_LATCH;
+    SC_REG = SIOF_XFER_START | SIOF_CLOCK_INT;
+}
 
-    uint8_t * p_snes_gamepad = (uint8_t *) &snes_gamepad;
-    for (uint8_t c = 0u; c < SNES_GAMEPAD_REPORT_LEN; c++) {
-        // Start another transfer
-        // No bits set in Serial Out byte to avoid disturbing the LATCH line
-        SB_REG = 0u;
-        SC_REG = SIOF_XFER_START | SIOF_SPEED_32X | SIOF_CLOCK_INT;
 
-        // Wait for transfer to complete
-        while (SC_REG & SIOF_XFER_START);
+// Called whenever a transfer is complete
+static void snes_mouse_SIO(void) {
+
+    if (snes_mouse_state != SNES_MOUSE_STATE_DONE) {
         // Save incoming data (which is active low so invert bits)
-        *p_snes_gamepad++ = ~SB_REG;
+        // except from initial LATCH transfer
+        if (snes_mouse_state != SNES_MOUSE_STATE_LATCH) {
+            *p_snes_mouse_data++ = ~SB_REG;
+        }
+
+        snes_mouse_state++;
+        if (snes_mouse_state == SNES_MOUSE_STATE_DONE) {
+            // All transfers complete, signal data is ready
+            snes_mouse_data_ready = true;
+        } else {
+            // Start another transfer if needed
+            // No bits set in Serial Out byte to avoid disturbing the LATCH line
+            SB_REG = 0u;
+            SC_REG = SIOF_XFER_START | SIOF_CLOCK_INT;
+        }
     }
 }
 
 
+// Called in install the mouse SIO interrupt and init state vars
+void snes_mouse_interrupt_init(void) {
+    snes_mouse_state = SNES_MOUSE_STATE_DONE;
+    snes_mouse_data_ready = false;
+
+    CRITICAL {
+        // Remove first to avoid accidentally double-adding it
+        remove_SIO(snes_mouse_SIO);
+        add_SIO(snes_mouse_SIO);
+    }
+
+    set_interrupts(VBL_IFLAG | SIO_IFLAG);    
+}
+
+
+// Called in de-install the mouse SIO interrupt
+void snes_mouse_interrupt_deinstall(void) {
+    CRITICAL {
+        // Remove first to avoid accidentally double-adding it
+        remove_SIO(snes_mouse_SIO);
+    }
+    set_interrupts(VBL_IFLAG & ~SIO_IFLAG);
+}

@@ -5,16 +5,17 @@ the Game Boy (in C/GBDK) attached directly to the link port.
 
 https://github.com/user-attachments/assets/db09934d-4106-4748-8b14-7fa4eb37c3af
 
-This is a simplistic implementation with blocking waits for serial transfers
-to finish. In actual use it would be better to use an interrupt to handle
-completion of each serial transfer.
+There are two implementations, a interrupt based polling method which is more
+efficient and a simplistic one with blocking waits that is much slower.
+
+There are separate implementation files for the mouse vs gamepad.
 
 
 SNES Controller Port
 
 ```
-  SNES CONTROLLER                               GAME BOY
-  *PORT*                                       LINK *PORT*
+ SNES CONTROLLER                                GAME BOY
+ *PORT*                                        LINK *PORT*
    _
   / \
  | 7 | GND         -   GB_Link.GND       [6]
