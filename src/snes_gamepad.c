@@ -1,18 +1,11 @@
 #include <gbdk/platform.h>
 #include <stdint.h>
-#include <gb/isr.h>
-
-#include <stdio.h>
-#include <gbdk/console.h>
-
-#include "common.h"
+#include <stdbool.h>
 
 #include "snes_gamepad.h"
 
 
-
 snes_gamepad_t snes_gamepad;
-
 
 uint8_t snes_gamepad_state;
 bool    snes_gamepad_data_ready;
@@ -82,6 +75,10 @@ void snes_gamepad_interrupt_read_start(void) {
 // Called whenever a transfer is complete
 static void snes_gamepad_SIO(void) {
 
+    #ifdef DEBUG_VISUALIZE_INTERRUPT_TIME_BGP
+        BGP_REG = ~BGP_REG;
+    #endif
+
     if (snes_gamepad_state != SNES_GAMEPAD_STATE_DONE) {
         // Save incoming data (which is active low so invert bits)
         // except from initial LATCH transfer
@@ -100,6 +97,10 @@ static void snes_gamepad_SIO(void) {
             SC_REG = SIOF_XFER_START | SIOF_CLOCK_INT;
         }
     }
+
+    #ifdef DEBUG_VISUALIZE_INTERRUPT_TIME_BGP
+        BGP_REG = ~BGP_REG;
+    #endif
 }
 
 

@@ -57,7 +57,12 @@ static void main_init(void) {
 }
 
 
+#define MOUSE_LAST_UNSET 0xFFu
+
 void use_mouse_data(void) {
+
+    static uint8_t last_x = MOUSE_LAST_UNSET;
+    static uint8_t last_y = MOUSE_LAST_UNSET;
 
     uint8_t mouse_buttons = (snes_mouse.buttons & SNES_MOUSE_BUTTON_MASK);
 
@@ -67,15 +72,33 @@ void use_mouse_data(void) {
     int8_t mouse_x_move = (snes_mouse.move_x & SNES_MOUSE_X_MASK);
     if (snes_mouse.move_x & SNES_MOUSE_X_DIR) mouse_x_move *= -1;
 
+    // Move the cursor
     scroll_sprite(SPRITE_MOUSE_CURSOR, mouse_x_move, mouse_y_move);
 
-    if (mouse_buttons & SNES_MOUSE_BUTTON_LEFT) {
-        OAM_item_t * itm = &shadow_OAM[SPRITE_MOUSE_CURSOR];
-        plot_point(itm->x - DEVICE_SPRITE_PX_OFFSET_X + SCX_REG,
-                   itm->y - DEVICE_SPRITE_PX_OFFSET_Y + SCY_REG);
+    if (mouse_buttons == SNES_MOUSE_BUTTON_BOTH) {
+        // Clear the screen if both mouse buttons are held down
+        box(0u,0u, DEVICE_SCREEN_PX_WIDTH - 1u, DEVICE_SCREEN_PX_HEIGHT -1u, M_FILL);
     }
 
-    if (mouse_buttons & SNES_MOUSE_BUTTON_RIGHT) {
+    if (mouse_buttons == SNES_MOUSE_BUTTON_LEFT) {
+        OAM_item_t * itm = &shadow_OAM[SPRITE_MOUSE_CURSOR];
+
+        uint8_t x = itm->x - DEVICE_SPRITE_PX_OFFSET_X + SCX_REG;
+        uint8_t y = itm->y - DEVICE_SPRITE_PX_OFFSET_Y + SCY_REG;
+
+        if (last_x == MOUSE_LAST_UNSET) {
+            plot_point(x, y);
+        } else {
+            line(last_x, last_y, x, y);
+        }
+        // Save coordinates for next time
+        last_x = x;
+        last_y = y;
+    } else {
+        last_x = last_y = MOUSE_LAST_UNSET;
+    }
+
+    if (mouse_buttons == SNES_MOUSE_BUTTON_RIGHT) {
         scroll_bkg(-mouse_x_move, -mouse_y_move);
     }
 }
@@ -205,7 +228,11 @@ void main(void){
       "\n"
       "GamePad \n"
       " SEL: Live Draw\n"
-      " B:  Poll + Log\n");
+      " B:  Poll + Log\n"
+      "\n"
+      "Set Model \n"
+      " L: OEM Nint. (def)\n"
+      " R: Hyperkin\n");
     main_init();
 
     while (1) {
@@ -216,6 +243,9 @@ void main(void){
 
         if (KEY_TICKED(J_SELECT)) poll_loop(POLL_GAMEPAD);
         if (KEY_TICKED(J_B)) poll_gamepad_once_log();
+
+        if (KEY_TICKED(J_LEFT))  snes_mouse_set_model(SNES_MOUSE_OEM);
+        if (KEY_TICKED(J_RIGHT)) snes_mouse_set_model(SNES_MOUSE_HYPERKIN);
 
         vsync();
     }

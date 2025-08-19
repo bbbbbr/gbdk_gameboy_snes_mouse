@@ -1,11 +1,13 @@
 #ifndef _SNES_GAMEPAD_H
 #define _SNES_GAMEPAD_H
 
-#include "common.h"
+#include <stdint.h>
+#include <stdbool.h>
 
 #define SNES_GAMEPAD_TX_LATCH  0b11111111
 #define SNES_GAMEPAD_REPORT_LEN  2
 
+// #define DEBUG_VISUALIZE_INTERRUPT_TIME_BGP
 
 // SNES GAMEPAD BUTTON BITS
 //
