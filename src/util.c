@@ -1,5 +1,6 @@
 #include <gbdk/platform.h>
 #include <stdint.h>
+#include <gbdk/font.h>
 
 #define M_RESET_TO_DEFAULT 0u
 
@@ -28,3 +29,17 @@ void apa_exit(void){
     //sets drawing flag to OFF
     mode(M_RESET_TO_DEFAULT);
 }
+
+void return_to_text_mode(void) {
+
+    apa_exit();
+    mode(M_TEXT_OUT);
+
+    font_init();
+    font_t font;
+    font = font_load(font_ibm);
+    font_set(font);
+}
+
+
+

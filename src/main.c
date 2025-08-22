@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include <gb/drawing.h>
+#include <gbdk/font.h>
 
 #include "common.h"
 #include "input.h"
@@ -36,6 +37,23 @@ const unsigned char mouse_cursors[] = {
   0x10, 0x10, 0x38, 0x28, 0x38, 0x28, 0x7E, 0x6E,
   0xFE, 0xA2, 0xFE, 0x82, 0x7E, 0x42, 0x3E, 0x3E
 };
+
+
+
+static void print_menu(void) {
+    printf(
+      "Mouse \n"
+      " ST: Live Draw\n"
+      " A:  Poll + Log\n"
+      "\n"
+      "GamePad \n"
+      " SEL: Live Draw\n"
+      " B:  Poll + Log\n"
+      "\n"
+      "Set Model \n"
+      " L: OEM Nint. (def)\n"
+      " R: Hyperkin\n");
+}
 
 
 static void main_init(void) {
@@ -177,8 +195,9 @@ void poll_loop(uint8_t poll_type) {
     else if (poll_type == POLL_MOUSE)
         snes_gamepad_interrupt_deinstall();
 
-    apa_exit();
-    mode(M_TEXT_OUT);
+    return_to_text_mode();
+    print_menu();
+
     SCX_REG = 0u;
     SCY_REG = 0u;
 }
@@ -218,21 +237,15 @@ void poll_gamepad_once_log(void) {
 
 void main(void){
 
+    font_init();
+
+    font_t font;
+    font = font_load(font_ibm);
+    font_set(font);
+
     UPDATE_KEYS();
 
-
-    printf(
-      "Mouse \n"
-      " ST: Live Draw\n"
-      " A:  Poll + Log\n"
-      "\n"
-      "GamePad \n"
-      " SEL: Live Draw\n"
-      " B:  Poll + Log\n"
-      "\n"
-      "Set Model \n"
-      " L: OEM Nint. (def)\n"
-      " R: Hyperkin\n");
+    print_menu();
     main_init();
 
     while (1) {
