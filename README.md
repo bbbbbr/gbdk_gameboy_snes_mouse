@@ -13,11 +13,12 @@ There are separate implementation files for the mouse vs gamepad.
 # Nintendo SNES Mouse
 When an inverter is used on the clock out, this setup has been tested as
 working on the following consoles:
-- Game Boy: DMG, MGB, GBC, SGB2, AGS101
+- Game Boy: DMG, ~~MGB~~, GBC, SGB2, AGS101
 - GB Boy Colour
 - Analogue Pocket
 
 And not working on the following (maybe offset by one bit):
+- MGB (had seemed to work, but not upon later testing)
 - FPGBC
 - Modretro Chromatic
 
