@@ -125,6 +125,9 @@ clean:
 include Makefile.targets
 
 
+flash:
+	flashgbx --cli --ignore-bad-header  --mode dmg --action flash-rom --flashcart-type "Catskull 32k Gameboy Flash Cart" build/gb/gb_snes_mouse.gb
+
 # create necessary directories after Makefile is parsed but before build
 # info prevents the command from being pasted into the makefile
 ifneq ($(strip $(EXT)),)           # Only make the directories if EXT has been set by a target
